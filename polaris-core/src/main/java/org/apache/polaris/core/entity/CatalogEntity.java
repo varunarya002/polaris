@@ -341,12 +341,12 @@ public class CatalogEntity extends PolarisEntity implements LocationBasedEntity 
                     .build();
             break;
           case GCS:
+            GcpStorageConfigInfo gcpConfigModel = (GcpStorageConfigInfo) storageConfigModel;
             config =
                 GcpStorageConfigurationInfo.builder()
                     .allowedLocations(allowedLocations)
                     .storageName(storageConfigModel.getStorageName())
-                    .gcpServiceAccount(
-                        ((GcpStorageConfigInfo) storageConfigModel).getGcsServiceAccount())
+                    .gcpServiceAccount(gcpConfigModel.getGcsServiceAccount())
                     .build();
             break;
           case FILE:
