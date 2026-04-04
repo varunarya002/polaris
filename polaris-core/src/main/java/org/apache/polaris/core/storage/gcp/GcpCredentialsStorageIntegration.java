@@ -154,22 +154,31 @@ public class GcpCredentialsStorageIntegration
 
   /**
    * Auto-detects which write location buckets have HNS enabled by querying GCS bucket metadata.
-   * Returns the set of bucket names that have HNS enabled.
+   * Returns the set of bucket names that have HNS enabled. Uses a single Storage client for all
+   * queries. Credentials are already refreshed by the caller before this method is invoked.
    */
   private Set<String> detectHnsBuckets(@Nonnull Set<String> writeLocations) {
-    return writeLocations.stream()
+    Set<String> bucketNames = writeLocations.stream()
         .map(StorageUtil::getBucket)
         .filter(Objects::nonNull)
-        .distinct()
-        .filter(this::queryBucketHnsStatus)
         .collect(Collectors.toSet());
+    if (bucketNames.isEmpty()) {
+      return Set.of();
+    }
+    try (Storage storage =
+        StorageOptions.newBuilder().setCredentials(sourceCredentials).build().getService()) {
+      return bucketNames.stream()
+          .filter(name -> queryBucketHnsStatus(storage, name))
+          .collect(Collectors.toSet());
+    } catch (Exception e) {
+      LOGGER.warn("Failed to create GCS client for HNS detection, assuming non-HNS: {}",
+          e.getMessage());
+      return Set.of();
+    }
   }
 
-  private boolean queryBucketHnsStatus(String bucketName) {
+  private boolean queryBucketHnsStatus(Storage storage, String bucketName) {
     try {
-      sourceCredentials.refreshIfExpired();
-      Storage storage =
-          StorageOptions.newBuilder().setCredentials(sourceCredentials).build().getService();
       Bucket bucket =
           storage.get(
               bucketName,

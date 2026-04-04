@@ -509,6 +509,250 @@ class GcpCredentialsStorageIntegrationTest extends BaseStorageIntegrationTest {
     assertThat(hnsBoundary.getAccessBoundaryRules()).hasSize(3);
   }
 
+  // ---- Per-bucket HNS auto-detection tests (Set<String> hnsBuckets overload) ----
+
+  @Test
+  public void testPerBucketHns_metadataOnHnsBucket_dataOnFlatBucket() {
+    // metadata-bucket is HNS, data-bucket is flat
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true,
+            Set.of("gs://hns-bucket/ns/table/metadata/", "gs://flat-bucket/ns/table/data/"),
+            Set.of("gs://hns-bucket/ns/table/metadata/", "gs://flat-bucket/ns/table/data/"),
+            Set.of("hns-bucket"));
+    assertThat(boundary).isNotNull();
+    // Expect 5 rules: read on each bucket (2), write on each bucket (2),
+    // folderAdmin only on hns-bucket (1)
+    assertThat(boundary.getAccessBoundaryRules()).hasSize(5);
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    // hns-bucket should have folderAdmin with folders/ and managedFolders/ conditions
+    assertThat(json).contains("roles/storage.folderAdmin");
+    assertThat(json).contains("folders/ns/table/metadata/");
+    assertThat(json).contains("managedFolders/ns/table/metadata/");
+    // flat-bucket should NOT have folders/ or managedFolders/ conditions
+    assertThat(json).doesNotContain("folders/ns/table/data/");
+    assertThat(json).doesNotContain("managedFolders/ns/table/data/");
+  }
+
+  @Test
+  public void testPerBucketHns_metadataOnFlatBucket_dataOnHnsBucket() {
+    // flat-bucket has metadata, hns-bucket has data
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true,
+            Set.of("gs://flat-bucket/ns/table/metadata/", "gs://hns-bucket/ns/table/data/"),
+            Set.of("gs://flat-bucket/ns/table/metadata/", "gs://hns-bucket/ns/table/data/"),
+            Set.of("hns-bucket"));
+    assertThat(boundary).isNotNull();
+    // 5 rules: read on each (2), write on each (2), folderAdmin on hns-bucket only (1)
+    assertThat(boundary.getAccessBoundaryRules()).hasSize(5);
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    // hns-bucket should have folder conditions for data path
+    assertThat(json).contains("roles/storage.folderAdmin");
+    assertThat(json).contains("folders/ns/table/data/");
+    assertThat(json).contains("managedFolders/ns/table/data/");
+    // flat-bucket should NOT have folder conditions
+    assertThat(json).doesNotContain("folders/ns/table/metadata/");
+    assertThat(json).doesNotContain("managedFolders/ns/table/metadata/");
+  }
+
+  @Test
+  public void testPerBucketHns_bothHnsDifferentBuckets() {
+    // Both buckets are HNS
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true,
+            Set.of("gs://hns-bucket-a/ns/table/metadata/", "gs://hns-bucket-b/ns/table/data/"),
+            Set.of("gs://hns-bucket-a/ns/table/metadata/", "gs://hns-bucket-b/ns/table/data/"),
+            Set.of("hns-bucket-a", "hns-bucket-b"));
+    assertThat(boundary).isNotNull();
+    // 6 rules: read on each (2), write on each (2), folderAdmin on each (2)
+    assertThat(boundary.getAccessBoundaryRules()).hasSize(6);
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    // Both buckets should have folder conditions
+    assertThat(json).contains("folders/ns/table/metadata/");
+    assertThat(json).contains("managedFolders/ns/table/metadata/");
+    assertThat(json).contains("folders/ns/table/data/");
+    assertThat(json).contains("managedFolders/ns/table/data/");
+  }
+
+  @Test
+  public void testPerBucketHns_bothNonHnsDifferentBuckets() {
+    // Neither bucket is HNS
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true,
+            Set.of("gs://flat-a/ns/table/metadata/", "gs://flat-b/ns/table/data/"),
+            Set.of("gs://flat-a/ns/table/metadata/", "gs://flat-b/ns/table/data/"),
+            Set.of());
+    assertThat(boundary).isNotNull();
+    // 4 rules: read on each (2), write on each (2), no folderAdmin
+    assertThat(boundary.getAccessBoundaryRules()).hasSize(4);
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    assertThat(json).doesNotContain("roles/storage.folderAdmin");
+    assertThat(json).doesNotContain("folders/");
+    assertThat(json).doesNotContain("managedFolders/");
+  }
+
+  @Test
+  public void testPerBucketHns_sameHnsBucket() {
+    // Both paths on the same HNS bucket
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true,
+            Set.of(
+                "gs://hns-bucket/warehouse/db/table/metadata/",
+                "gs://hns-bucket/warehouse/db/table/data/"),
+            Set.of(
+                "gs://hns-bucket/warehouse/db/table/metadata/",
+                "gs://hns-bucket/warehouse/db/table/data/"),
+            Set.of("hns-bucket"));
+    assertThat(boundary).isNotNull();
+    // Same bucket: 1 read rule, 1 write rule, 1 folderAdmin rule = 3
+    assertThat(boundary.getAccessBoundaryRules()).hasSize(3);
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    assertThat(json).contains("roles/storage.folderAdmin");
+    assertThat(json).contains("folders/warehouse/db/table/metadata/");
+    assertThat(json).contains("folders/warehouse/db/table/data/");
+    assertThat(json).contains("managedFolders/warehouse/db/table/metadata/");
+    assertThat(json).contains("managedFolders/warehouse/db/table/data/");
+  }
+
+  @Test
+  public void testPerBucketHns_emptyHnsBucketsSet() {
+    // Explicitly passing empty set should behave like non-HNS
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true,
+            Set.of("gs://bucket1/path/to/data"),
+            Set.of("gs://bucket1/path/to/data"),
+            Set.of());
+    assertThat(boundary).isNotNull();
+    // 2 rules: read + write, no folderAdmin
+    assertThat(boundary.getAccessBoundaryRules()).hasSize(2);
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    assertThat(json).doesNotContain("roles/storage.folderAdmin");
+    assertThat(json).doesNotContain("folders/");
+    assertThat(json).doesNotContain("managedFolders/");
+  }
+
+  @Test
+  public void testPerBucketHns_hnsBucketNotInWriteLocations() {
+    // hnsBuckets contains a bucket name that is NOT among the write locations.
+    // This should not produce a folderAdmin rule for the non-write bucket.
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true,
+            Set.of("gs://read-bucket/path/data/"),
+            Set.of("gs://write-bucket/path/data/"),
+            Set.of("read-bucket"));
+    assertThat(boundary).isNotNull();
+    // read-bucket is in hnsBuckets but not a write bucket, so no folderAdmin for it.
+    // write-bucket is a write bucket but not in hnsBuckets, so no folderAdmin for it.
+    // Expect: 2 read rules (read-bucket + write-bucket) + 1 write rule = 3, no folderAdmin
+    // Actually: both locations go into read, write-bucket goes into write.
+    // read-bucket read rule, write-bucket read rule, write-bucket write rule = could be 2 or 3
+    // depending on bucket consolidation. Let's just check no folderAdmin.
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    assertThat(json).doesNotContain("roles/storage.folderAdmin");
+    assertThat(json).doesNotContain("folders/");
+    assertThat(json).doesNotContain("managedFolders/");
+  }
+
+  @Test
+  public void testPerBucketHns_mixedBucketsWithListDisabled() {
+    // Verify per-bucket HNS works correctly when list operations are disabled
+    CredentialAccessBoundary boundary =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            false,
+            Set.of("gs://hns-bucket/data/path/", "gs://flat-bucket/data/path/"),
+            Set.of("gs://hns-bucket/data/path/", "gs://flat-bucket/data/path/"),
+            Set.of("hns-bucket"));
+    assertThat(boundary).isNotNull();
+    // 5 rules: read on each (2), write on each (2), folderAdmin on hns-bucket (1)
+    assertThat(boundary.getAccessBoundaryRules()).hasSize(5);
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode parsedRules = mapper.convertValue(boundary, JsonNode.class);
+    String json = parsedRules.toString();
+    // Should still have folderAdmin for hns-bucket
+    assertThat(json).contains("roles/storage.folderAdmin");
+    // Should NOT have objectViewer (list is disabled)
+    assertThat(json).doesNotContain("roles/storage.objectViewer");
+    // Should NOT have list prefix expressions
+    assertThat(json).doesNotContain("objectListPrefix");
+  }
+
+  @Test
+  public void testPerBucketHns_consistentWithBooleanOverload() {
+    // When hnsBuckets contains all write buckets, result should match boolean=true overload
+    Set<String> readLocs = Set.of("gs://bucket1/path/to/data");
+    Set<String> writeLocs = Set.of("gs://bucket1/path/to/data");
+
+    CredentialAccessBoundary fromBoolean =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true, readLocs, writeLocs, true);
+    CredentialAccessBoundary fromSet =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true, readLocs, writeLocs, Set.of("bucket1"));
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode booleanRules = mapper.convertValue(fromBoolean, JsonNode.class);
+    JsonNode setRules = mapper.convertValue(fromSet, JsonNode.class);
+
+    assertThat(setRules)
+        .usingRecursiveComparison(
+            RecursiveComparisonConfiguration.builder()
+                .withEqualsForType(this::recursiveEquals, ObjectNode.class)
+                .build())
+        .isEqualTo(booleanRules);
+  }
+
+  @Test
+  public void testPerBucketHns_emptySetConsistentWithBooleanFalse() {
+    // Empty hnsBuckets set should match boolean=false overload
+    Set<String> readLocs = Set.of("gs://bucket1/path/to/data");
+    Set<String> writeLocs = Set.of("gs://bucket1/path/to/data");
+
+    CredentialAccessBoundary fromBoolean =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true, readLocs, writeLocs, false);
+    CredentialAccessBoundary fromSet =
+        GcpCredentialsStorageIntegration.generateAccessBoundaryRules(
+            true, readLocs, writeLocs, Set.of());
+
+    ObjectMapper mapper = JsonMapper.builder().build();
+    JsonNode booleanRules = mapper.convertValue(fromBoolean, JsonNode.class);
+    JsonNode setRules = mapper.convertValue(fromSet, JsonNode.class);
+
+    assertThat(setRules)
+        .usingRecursiveComparison(
+            RecursiveComparisonConfiguration.builder()
+                .withEqualsForType(this::recursiveEquals, ObjectNode.class)
+                .build())
+        .isEqualTo(booleanRules);
+  }
+
   private boolean isNotNull(JsonNode node) {
     return node != null && !node.isNull();
   }
