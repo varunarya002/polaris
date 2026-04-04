@@ -1193,6 +1193,7 @@ components:
             gcsServiceAccount:
               type: string
               description: a Google cloud storage service account
+
     FileStorageConfigInfo:
       type: object
       description: file storage configuration info

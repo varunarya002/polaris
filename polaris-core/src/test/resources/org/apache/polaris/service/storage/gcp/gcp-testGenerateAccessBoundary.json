@@ -2,6 +2,7 @@
   "accessBoundaryRules": [
     {
       "availablePermissions": [
+        "inRole:roles/storage.legacyObjectReader",
         "inRole:roles/storage.objectViewer"
       ],
       "availableResource": "//storage.googleapis.com/projects/_/buckets/bucket1",
@@ -11,11 +12,20 @@
     },
     {
       "availablePermissions": [
-        "inRole:roles/storage.objectCreator"
+        "inRole:roles/storage.legacyBucketWriter"
       ],
       "availableResource": "//storage.googleapis.com/projects/_/buckets/bucket1",
       "availabilityCondition": {
         "expression": "resource.name.startsWith('projects/_/buckets/bucket1/objects/path/to/data')"
+      }
+    },
+    {
+      "availablePermissions": [
+        "inRole:roles/storage.folderAdmin"
+      ],
+      "availableResource": "//storage.googleapis.com/projects/_/buckets/bucket1",
+      "availabilityCondition": {
+        "expression": "resource.name.startsWith('projects/_/buckets/bucket1/managedFolders/path/to/data')"
       }
     }
   ]

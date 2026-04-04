@@ -27,10 +27,6 @@ import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
-import com.google.cloud.storage.Bucket;
-import com.google.cloud.storage.BucketInfo;
-import com.google.cloud.storage.Storage;
-import com.google.cloud.storage.StorageOptions;
 import com.google.cloud.iam.credentials.v1.GenerateAccessTokenRequest;
 import com.google.cloud.iam.credentials.v1.GenerateAccessTokenResponse;
 import com.google.cloud.iam.credentials.v1.IamCredentialsClient;
@@ -51,7 +47,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.config.RealmConfig;
@@ -112,10 +107,9 @@ public class GcpCredentialsStorageIntegration
 
     GoogleCredentials credentialsToDownscope = getBaseCredentials();
 
-    Set<String> hnsBuckets = detectHnsBuckets(allowedWriteLocations);
     CredentialAccessBoundary accessBoundary =
         generateAccessBoundaryRules(
-            allowListOperation, allowedReadLocations, allowedWriteLocations, hnsBuckets);
+            allowListOperation, allowedReadLocations, allowedWriteLocations);
     DownscopedCredentials credentials =
         DownscopedCredentials.newBuilder()
             .setHttpTransportFactory(transportFactory)
@@ -150,49 +144,6 @@ public class GcpCredentialsStorageIntegration
         });
 
     return accessConfig.build();
-  }
-
-  /**
-   * Auto-detects which write location buckets have HNS enabled by querying GCS bucket metadata.
-   * Returns the set of bucket names that have HNS enabled. Uses a single Storage client for all
-   * queries. Credentials are already refreshed by the caller before this method is invoked.
-   */
-  private Set<String> detectHnsBuckets(@Nonnull Set<String> writeLocations) {
-    Set<String> bucketNames = writeLocations.stream()
-        .map(StorageUtil::getBucket)
-        .filter(Objects::nonNull)
-        .collect(Collectors.toSet());
-    if (bucketNames.isEmpty()) {
-      return Set.of();
-    }
-    Storage storage =
-        StorageOptions.newBuilder().setCredentials(sourceCredentials).build().getService();
-    return bucketNames.stream()
-        .filter(name -> queryBucketHnsStatus(storage, name))
-        .collect(Collectors.toSet());
-  }
-
-  private boolean queryBucketHnsStatus(Storage storage, String bucketName) {
-    try {
-      Bucket bucket =
-          storage.get(
-              bucketName,
-              Storage.BucketGetOption.fields(Storage.BucketField.HIERARCHICAL_NAMESPACE));
-      if (bucket == null) {
-        LOGGER.warn("GCS bucket '{}' not found during HNS detection, assuming non-HNS", bucketName);
-        return false;
-      }
-      boolean hns =
-          Optional.ofNullable(bucket.getHierarchicalNamespace())
-              .map(BucketInfo.HierarchicalNamespace::getEnabled)
-              .orElse(false);
-      LOGGER.info("Auto-detected HNS status for bucket '{}': {}", bucketName, hns);
-      return hns;
-    } catch (Exception e) {
-      LOGGER.warn("Failed to auto-detect HNS for bucket '{}', assuming non-HNS: {}",
-          bucketName, e.getMessage());
-      return false;
-    }
   }
 
   /**
@@ -249,36 +200,9 @@ public class GcpCredentialsStorageIntegration
       boolean allowListOperation,
       @Nonnull Set<String> allowedReadLocations,
       @Nonnull Set<String> allowedWriteLocations) {
-    return generateAccessBoundaryRules(
-        allowListOperation, allowedReadLocations, allowedWriteLocations, Set.of());
-  }
-
-  @VisibleForTesting
-  public static CredentialAccessBoundary generateAccessBoundaryRules(
-      boolean allowListOperation,
-      @Nonnull Set<String> allowedReadLocations,
-      @Nonnull Set<String> allowedWriteLocations,
-      boolean isHierarchicalNamespace) {
-    // Backward-compatible overload: if true, treat all write buckets as HNS
-    Set<String> hnsBuckets = isHierarchicalNamespace
-        ? allowedWriteLocations.stream()
-            .map(StorageUtil::getBucket)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet())
-        : Set.of();
-    return generateAccessBoundaryRules(
-        allowListOperation, allowedReadLocations, allowedWriteLocations, hnsBuckets);
-  }
-
-  @VisibleForTesting
-  public static CredentialAccessBoundary generateAccessBoundaryRules(
-      boolean allowListOperation,
-      @Nonnull Set<String> allowedReadLocations,
-      @Nonnull Set<String> allowedWriteLocations,
-      @Nonnull Set<String> hnsBuckets) {
     Map<String, List<String>> readConditionsMap = new HashMap<>();
     Map<String, List<String>> writeConditionsMap = new HashMap<>();
-    Map<String, List<String>> managedFolderConditionsMap = new HashMap<>();
+    Map<String, List<String>> folderWriteConditionsMap = new HashMap<>();
 
     HashSet<String> readBuckets = new HashSet<>();
     HashSet<String> writeBuckets = new HashSet<>();
@@ -289,13 +213,20 @@ public class GcpCredentialsStorageIntegration
               URI uri = URI.create(location);
               String bucket = StorageUtil.getBucket(uri);
               readBuckets.add(bucket);
-              String path = uri.getPath().substring(1);
+              String path = uri.getPath().isEmpty() ? "" : uri.getPath().substring(1);
               List<String> resourceExpressions =
                   readConditionsMap.computeIfAbsent(bucket, key -> new ArrayList<>());
-              resourceExpressions.add(
-                  String.format(
-                      "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
-                      bucket, path));
+              if (path.isEmpty()) {
+                resourceExpressions.add(
+                    String.format(
+                        "resource.name.startsWith('projects/_/buckets/%s')",
+                        bucket));
+              } else {
+                resourceExpressions.add(
+                    String.format(
+                        "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
+                        bucket, path));
+              }
               if (allowListOperation) {
                 resourceExpressions.add(
                     String.format(
@@ -310,9 +241,17 @@ public class GcpCredentialsStorageIntegration
                     String.format(
                         "resource.name.startsWith('projects/_/buckets/%s/objects/%s')",
                         bucket, path));
-                if (hnsBuckets.contains(bucket)) {
-                  List<String> folderExpressions =
-                      managedFolderConditionsMap.computeIfAbsent(bucket, key -> new ArrayList<>());
+                List<String> folderExpressions =
+                    folderWriteConditionsMap.computeIfAbsent(bucket, key -> new ArrayList<>());
+                if (path.isEmpty()) {
+                  folderExpressions.add(
+                      String.format(
+                          "resource.name.startsWith('projects/_/buckets/%s/folders')", bucket));
+                  folderExpressions.add(
+                      String.format(
+                          "resource.name.startsWith('projects/_/buckets/%s/managedFolders')",
+                          bucket));
+                } else {
                   folderExpressions.add(
                       String.format(
                           "resource.name.startsWith('projects/_/buckets/%s/folders/%s')",
@@ -360,28 +299,26 @@ public class GcpCredentialsStorageIntegration
           builder.setAvailablePermissions(List.of("inRole:roles/storage.legacyBucketWriter"));
           accessBoundaryBuilder.addRule(builder.build());
         });
-    // roles/storage.folderAdmin is the least-privileged predefined GCP role that grants
-    // storage.folders.create and storage.managedFolders.create, which HNS-enabled buckets
-    // require for explicit folder creation. Only added for buckets that are HNS-enabled.
-    // The access boundary condition scopes permissions to specific write paths.
-    writeBuckets.stream()
-        .filter(hnsBuckets::contains)
-        .forEach(
-            bucket -> {
-              List<String> folderConditions = managedFolderConditionsMap.get(bucket);
-              if (folderConditions == null || folderConditions.isEmpty()) {
-                return;
-              }
-              CredentialAccessBoundary.AccessBoundaryRule.Builder builder =
-                  CredentialAccessBoundary.AccessBoundaryRule.newBuilder();
-              builder.setAvailableResource(bucketResource(bucket));
-              builder.setAvailabilityCondition(
-                  CredentialAccessBoundary.AccessBoundaryRule.AvailabilityCondition.newBuilder()
-                      .setExpression(String.join(" || ", folderConditions))
-                      .build());
-              builder.setAvailablePermissions(List.of("inRole:roles/storage.folderAdmin"));
-              accessBoundaryBuilder.addRule(builder.build());
-            });
+    // Folder operations for HNS (Hierarchical Namespace) GCS buckets.
+    // Spark creates partition directories during ingestion (df.writeTo().append()) which
+    // requires storage.folders.create — not included in storage.legacyBucketWriter.
+    // Added for ALL write buckets unconditionally; folderAdmin on non-HNS buckets is harmless.
+    writeBuckets.forEach(
+        bucket -> {
+          List<String> folderConditions = folderWriteConditionsMap.get(bucket);
+          if (folderConditions == null || folderConditions.isEmpty()) {
+            return;
+          }
+          CredentialAccessBoundary.AccessBoundaryRule.Builder builder =
+              CredentialAccessBoundary.AccessBoundaryRule.newBuilder();
+          builder.setAvailableResource(bucketResource(bucket));
+          builder.setAvailabilityCondition(
+              CredentialAccessBoundary.AccessBoundaryRule.AvailabilityCondition.newBuilder()
+                  .setExpression(String.join(" || ", folderConditions))
+                  .build());
+          builder.setAvailablePermissions(List.of("inRole:roles/storage.folderAdmin"));
+          accessBoundaryBuilder.addRule(builder.build());
+        });
     return accessBoundaryBuilder.build();
   }
 
