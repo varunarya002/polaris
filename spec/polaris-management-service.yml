@@ -1195,11 +1195,12 @@ components:
               description: a Google cloud storage service account
             hierarchicalNamespace:
               type: boolean
+              deprecated: true
               description: >-
-                If set to `true`, indicates that the GCS bucket has Hierarchical Namespace (HNS) enabled.
-                When HNS is enabled, folders must be created explicitly and credential vending will include
-                additional permissions for folder management. This flag should be set only if HNS is enabled
-                on the GCS bucket. Using this feature with non-HNS buckets may grant unnecessary permissions.
+                Deprecated: HNS is now auto-detected by querying the GCS bucket metadata at runtime.
+                This flag is no longer required. Polaris automatically detects whether a bucket has
+                Hierarchical Namespace (HNS) enabled and includes the appropriate folder permissions
+                in vended credentials. If set, this value is ignored in favor of auto-detection.
 
     FileStorageConfigInfo:
       type: object

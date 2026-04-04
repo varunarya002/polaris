@@ -28,8 +28,11 @@ For the `polaris catalogs create` [command]({{% ref "../../command-line-interfac
 ```text
 --storage-type gcs
 --service-account  (Only for GCS) The service account to use when connecting to GCS
---hierarchical-namespace (Only for GCS) Set to true if the GCS bucket has Hierarchical Namespace (HNS) enabled
 ```
+
+> **Note:** The `--hierarchical-namespace` flag is no longer required. Polaris automatically detects
+> whether a GCS bucket has Hierarchical Namespace (HNS) enabled and includes the appropriate folder
+> permissions in vended credentials.
 
 ### example
 

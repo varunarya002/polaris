@@ -31,19 +31,14 @@ Polaris requires both IAM roles and [Hierarchical Namespace (HNS)](https://docs.
 
 **Note:** HNS is not mandatory when using GCS for a catalog in Polaris. If HNS is not enabled on the bucket, only IAM roles are required for access. Always verify HNS ACLs in addition to IAM roles when troubleshooting GCS access issues with credential vending and HNS enabled.
 
-## Enabling HNS support in catalog configuration
+## HNS support (auto-detected)
 
-If your GCS bucket has HNS enabled, set the `hierarchicalNamespace` flag to `true` in the catalog's storage configuration:
+Polaris automatically detects whether a GCS bucket has [Hierarchical Namespace (HNS)](https://docs.cloud.google.com/storage/docs/hns-overview) enabled by querying the bucket metadata at runtime. No manual configuration is required.
 
-```json
-{
-  "storageType": "GCS",
-  "allowedLocations": ["gs://my-hns-bucket/warehouse/"],
-  "gcsServiceAccount": "my-service-account@my-project.iam.gserviceaccount.com",
-  "hierarchicalNamespace": true
-}
-```
+When HNS is detected on a write-location bucket, credential vending automatically includes an additional access boundary rule granting `roles/storage.folderAdmin` on write paths. This allows the scoped (vended) token to create folders and managed folders, which HNS buckets require for path operations (e.g., partition directories). The permission is scoped to specific write paths using `resource.name.startsWith(...)` conditions covering both `folders/` and `managedFolders/` resources.
 
-When this flag is enabled, credential vending will include an additional access boundary rule granting `roles/storage.folderAdmin` on write paths. This allows the scoped (vended) token to create managed folders, which HNS buckets require for path operations. The permission is scoped to specific write paths using `resource.name.startsWith(...)` conditions.
+For non-HNS buckets, no additional permissions are granted — the auto-detection ensures that `folderAdmin` is only included when actually needed.
 
-**Important:** Only set `hierarchicalNamespace: true` if your GCS bucket actually has HNS enabled. Using this flag with non-HNS buckets grants unnecessary `roles/storage.folderAdmin` permissions.
+> **Deprecation notice:** The `hierarchicalNamespace` flag in the catalog storage configuration is
+> deprecated and no longer required. If set, it is ignored in favor of auto-detection. Existing
+> catalogs with this flag set will continue to work without changes.
