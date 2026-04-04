@@ -16,12 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.polaris.service.events.listeners;
+package org.apache.polaris.core.auth;
 
-import io.smallrye.common.annotation.Identifier;
-import jakarta.enterprise.context.ApplicationScoped;
+import com.google.common.base.Preconditions;
+import org.apache.polaris.core.entity.PolarisEntityType;
 
-/** Event listener that does nothing. */
-@ApplicationScoped
-@Identifier("no-op")
-public class NoOpPolarisEventListener implements PolarisEventListener {}
+/** One segment in a fully qualified resource path. */
+public record PathSegment(PolarisEntityType entityType, String name) {
+  public PathSegment {
+    Preconditions.checkNotNull(entityType, "entityType must be non-null");
+    Preconditions.checkNotNull(name, "name must be non-null");
+  }
+}

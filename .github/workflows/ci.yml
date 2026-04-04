@@ -237,7 +237,19 @@ jobs:
         with:
           version: ${{ matrix.helm-version }}
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@6ec842c01de15ebb84c8627d2744a0c2f2755c9f # v2.8.0
+        run: |
+          CT_VERSION=3.14.0
+          ARCH=$(uname -m)
+          case "$ARCH" in
+            x86_64|amd64) ARCH=amd64 ;;
+            aarch64|arm64) ARCH=arm64 ;;
+          esac
+          curl -sSLo ct.tar.gz "https://github.com/helm/chart-testing/releases/download/v${CT_VERSION}/chart-testing_${CT_VERSION}_linux_${ARCH}.tar.gz"
+          sudo tar -xzf ct.tar.gz -C /usr/local/bin ct
+          mkdir -p .ct
+          tar -xzf ct.tar.gz --strip-components=1 -C .ct etc
+          rm ct.tar.gz
+          pip install yamllint yamale
       - name: Set up helm-docs
         run: |
           go install github.com/norwoodj/helm-docs/cmd/helm-docs@latest
@@ -259,7 +271,7 @@ jobs:
       - name: Run Helm unit tests
         run: make helm-unittest
       - name: Run chart-testing (lint)
-        run: ct lint --target-branch ${{ github.event.repository.default_branch }} --debug --charts ./helm/polaris --validate-maintainers=false
+        run: ct lint --target-branch ${{ github.base_ref || github.event.repository.default_branch }} --debug --charts ./helm/polaris --validate-maintainers=false
       - name: Set up Minikube
         uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
         with:
@@ -271,6 +283,8 @@ jobs:
       - name: Load image into Minikube
         run: |
           zstd -d -c polaris-image.tar.zst | minikube image load -
+          APP_VERSION=$(grep '^appVersion:' helm/polaris/Chart.yaml | awk '{print $2}')
+          minikube image tag apache/polaris:latest apache/polaris:${APP_VERSION}
           echo "Available images:"
           minikube image ls
       - name: Install fixtures
@@ -279,7 +293,7 @@ jobs:
           kubectl apply --namespace polaris-ns -f helm/polaris/ci/fixtures
       - name: Run chart-testing (install)
         run: |
-          ct install --target-branch ${{ github.event.repository.default_branch }} \
+          ct install --target-branch ${{ github.base_ref || github.event.repository.default_branch }} \
             --namespace polaris-ns \
             --debug --charts ./helm/polaris
 
@@ -355,6 +369,7 @@ jobs:
 
   markdown-link-check:
     name: "Markdown Link Check"
+    if: github.repository == 'apache/polaris'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -123,7 +123,7 @@ polaris profiles --help
 polaris setup --help
 ```
 
-### catalogs
+### Catalogs
 
 The `catalogs` command is used to create, discover, and otherwise manage catalogs within Polaris.
 
@@ -134,6 +134,7 @@ The `catalogs` command is used to create, discover, and otherwise manage catalog
 3. get
 4. list
 5. update
+6. summarize
 
 #### create
 
@@ -266,6 +267,24 @@ options:
 polaris catalogs list
 
 polaris catalogs list --principal-role some_user
+```
+
+#### summarize
+
+The `summarize` subcommand is used to display summary for a catalog.
+
+```
+input: polaris catalogs summarize --help
+options:
+  summarize
+    Positional arguments:
+      catalog
+```
+
+##### Examples
+
+```
+polaris catalogs summarize some_catalog
 ```
 
 #### update
@@ -469,6 +488,24 @@ polaris principals reset --new-client-secret ${NEW_CLIENT_SECRET} some_user
 polaris principals reset --new-client-id ${NEW_CLIENT_ID} --new-client-secret ${NEW_CLIENT_SECRET} some_user
 ```
 
+#### summarize
+
+The `summarize` subcommand is used to display summary for a principal.
+
+```
+input: polaris principals summarize --help
+options:
+  summarize
+    Positional arguments:
+      principal
+```
+
+##### Examples
+
+```
+polaris principals summarize some_user
+```
+
 ### Principal Roles
 
 The `principal-roles` command is used to create, discover, and manage principal roles within Polaris. Additionally, this command can identify principals or catalog roles associated with a principal role, and can be used to grant a principal role to a principal.
@@ -482,6 +519,7 @@ The `principal-roles` command is used to create, discover, and manage principal 
 5. update
 6. grant
 7. revoke
+8. summarize
 
 #### create
 
@@ -635,6 +673,24 @@ polaris principal-roles revoke --principal former.employee data_engineer
 polaris principal-roles revoke data_scientist --principal changed.role
 ```
 
+#### summarize
+
+The `summarize` subcommand is used to display summary for a principal role.
+
+```
+input: polaris principal-roles summarize --help
+options:
+  summarize
+    Positional arguments:
+      principal_role
+```
+
+##### Examples
+
+```
+polaris principal-roles summarize data_engineer
+```
+
 ### Catalog Roles
 
 The catalog-roles command is used to create, discover, and manage catalog roles within Polaris. Additionally, this command can be used to grant a catalog role to a principal role.
@@ -648,6 +704,7 @@ The catalog-roles command is used to create, discover, and manage catalog roles 
 5. update
 6. grant
 7. revoke
+8. summarize
 
 #### create
 
@@ -808,6 +865,26 @@ polaris catalog-roles revoke sensitive_data --catalog some_catalog --principal-r
 polaris catalog-roles revoke --catalog sales_data contains_cc_info_catalog_role --principal-role financial_analyst_role
 ```
 
+#### summarize
+
+The `summarize` subcommand is used to display summary for a catalog role.
+
+```
+input: polaris catalog-roles summarize --help
+options:
+  summarize
+    Named arguments:
+      --catalog  The name of an existing catalog
+    Positional arguments:
+      catalog_role
+```
+
+##### Examples
+
+```
+polaris catalog-roles summarize --catalog some_catalog some_catalog_role
+```
+
 ### Namespaces
 
 The `namespaces` command is used to manage namespaces within Polaris.
@@ -818,6 +895,7 @@ The `namespaces` command is used to manage namespaces within Polaris.
 2. delete
 3. get
 4. list
+5. summarize
 
 #### create
 
@@ -910,6 +988,26 @@ polaris namespaces list --catalog my_catalog
 polaris namespaces list --catalog my_catalog --parent a
 
 polaris namespaces list --catalog my_catalog --parent a.b
+```
+
+#### summarize
+
+The `summarize` subcommand is used to display summary for a namespace.
+
+```
+input: polaris namespaces summarize --help
+options:
+  summarize
+    Named arguments:
+      --catalog  The name of an existing catalog
+    Positional arguments:
+      namespace
+```
+
+##### Examples
+
+```
+polaris namespaces summarize --catalog my_catalog a.b
 ```
 
 ### Privileges
@@ -1138,7 +1236,7 @@ polaris privileges \
   VIEW_FULL_METADATA
 ```
 
-### profiles
+### Profiles
 
 The `profiles` command is used to manage stored authentication profiles in Polaris. Profiles allow authentication credentials to be saved and reused, eliminating the need to pass credentials with every command.
 
@@ -1424,11 +1522,11 @@ polaris policies update --catalog some_catalog --namespace some.schema --policy-
 polaris policies update --catalog some_catalog --namespace some.schema --policy-file my_updated_policy.json --policy-description "Updated policy description" my_policy
 ```
 
-### repair
+### Repair
 
 The `repair` command is a bash script wrapper used to regenerate Python client code and update necessary dependencies, ensuring the Polaris client remains up-to-date and functional. **Please note that this command does not support any options and its usage information is not available via a `--help` flag.**
 
-### setup
+### Setup
 
 The `setup` command is used to automate the creation of various entities in Polaris, such as principals, roles, catalogs, namespaces, privileges, and policies, based on a configuration file. This simplifies the process of setting up a Polaris environment.
 

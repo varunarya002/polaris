@@ -191,6 +191,7 @@ public class CatalogEntity extends PolarisEntity implements LocationBasedEntity 
             .setStorageType(StorageConfigInfo.StorageTypeEnum.GCS)
             .setAllowedLocations(gcpConfigModel.getAllowedLocations())
             .setStorageName(gcpConfigModel.getStorageName())
+            .setHierarchicalNamespace(gcpConfigModel.isHierarchicalNamespace())
             .build();
       }
       if (configInfo instanceof FileStorageConfigurationInfo fileConfigModel) {

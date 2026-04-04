@@ -107,9 +107,10 @@ public class GcpCredentialsStorageIntegration
 
     GoogleCredentials credentialsToDownscope = getBaseCredentials();
 
+    boolean isHns = Boolean.TRUE.equals(config().isHierarchicalNamespace());
     CredentialAccessBoundary accessBoundary =
         generateAccessBoundaryRules(
-            allowListOperation, allowedReadLocations, allowedWriteLocations);
+            allowListOperation, allowedReadLocations, allowedWriteLocations, isHns);
     DownscopedCredentials credentials =
         DownscopedCredentials.newBuilder()
             .setHttpTransportFactory(transportFactory)
@@ -200,6 +201,16 @@ public class GcpCredentialsStorageIntegration
       boolean allowListOperation,
       @Nonnull Set<String> allowedReadLocations,
       @Nonnull Set<String> allowedWriteLocations) {
+    return generateAccessBoundaryRules(
+        allowListOperation, allowedReadLocations, allowedWriteLocations, false);
+  }
+
+  @VisibleForTesting
+  public static CredentialAccessBoundary generateAccessBoundaryRules(
+      boolean allowListOperation,
+      @Nonnull Set<String> allowedReadLocations,
+      @Nonnull Set<String> allowedWriteLocations,
+      boolean isHierarchicalNamespace) {
     Map<String, List<String>> readConditionsMap = new HashMap<>();
     Map<String, List<String>> writeConditionsMap = new HashMap<>();
     Map<String, List<String>> folderWriteConditionsMap = new HashMap<>();
