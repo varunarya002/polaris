@@ -509,26 +509,6 @@ class GcpCredentialsStorageIntegrationTest extends BaseStorageIntegrationTest {
     assertThat(hnsBoundary.getAccessBoundaryRules()).hasSize(3);
   }
 
-  @Test
-  public void testHnsConfigurationInfoSerialization() {
-    GcpStorageConfigurationInfo configWithHns =
-        GcpStorageConfigurationInfo.builder()
-            .addAllAllowedLocations(List.of("gs://bucket/path"))
-            .hierarchicalNamespace(true)
-            .build();
-    assertThat(configWithHns.isHierarchicalNamespace()).isTrue();
-
-    GcpStorageConfigurationInfo configWithoutHns =
-        GcpStorageConfigurationInfo.builder()
-            .addAllAllowedLocations(List.of("gs://bucket/path"))
-            .build();
-    assertThat(configWithoutHns.isHierarchicalNamespace()).isNull();
-
-    // Test serialization round-trip
-    String serialized = configWithHns.serialize();
-    assertThat(serialized).contains("hierarchicalNamespace");
-  }
-
   private boolean isNotNull(JsonNode node) {
     return node != null && !node.isNull();
   }

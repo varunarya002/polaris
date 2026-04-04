@@ -1193,15 +1193,6 @@ components:
             gcsServiceAccount:
               type: string
               description: a Google cloud storage service account
-            hierarchicalNamespace:
-              type: boolean
-              deprecated: true
-              description: >-
-                Deprecated: HNS is now auto-detected by querying the GCS bucket metadata at runtime.
-                This flag is no longer required. Polaris automatically detects whether a bucket has
-                Hierarchical Namespace (HNS) enabled and includes the appropriate folder permissions
-                in vended credentials. If set, this value is ignored in favor of auto-detection.
-
     FileStorageConfigInfo:
       type: object
       description: file storage configuration info
