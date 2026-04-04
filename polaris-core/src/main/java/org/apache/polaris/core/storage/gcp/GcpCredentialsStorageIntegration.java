@@ -27,6 +27,10 @@ import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.CredentialAccessBoundary;
 import com.google.auth.oauth2.DownscopedCredentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.storage.Bucket;
+import com.google.cloud.storage.BucketInfo;
+import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.StorageOptions;
 import com.google.cloud.iam.credentials.v1.GenerateAccessTokenRequest;
 import com.google.cloud.iam.credentials.v1.GenerateAccessTokenResponse;
 import com.google.cloud.iam.credentials.v1.IamCredentialsClient;
@@ -107,7 +111,7 @@ public class GcpCredentialsStorageIntegration
 
     GoogleCredentials credentialsToDownscope = getBaseCredentials();
 
-    boolean isHns = Boolean.TRUE.equals(config().isHierarchicalNamespace());
+    boolean isHns = detectHnsFromLocations(allowedWriteLocations);
     CredentialAccessBoundary accessBoundary =
         generateAccessBoundaryRules(
             allowListOperation, allowedReadLocations, allowedWriteLocations, isHns);
@@ -145,6 +149,43 @@ public class GcpCredentialsStorageIntegration
         });
 
     return accessConfig.build();
+  }
+
+  /**
+   * Auto-detects whether any write location bucket has HNS enabled by querying GCS bucket metadata.
+   */
+  private boolean detectHnsFromLocations(@Nonnull Set<String> writeLocations) {
+    return writeLocations.stream()
+        .map(StorageUtil::getBucket)
+        .filter(Objects::nonNull)
+        .distinct()
+        .anyMatch(this::queryBucketHnsStatus);
+  }
+
+  private boolean queryBucketHnsStatus(String bucketName) {
+    try {
+      sourceCredentials.refreshIfExpired();
+      Storage storage =
+          StorageOptions.newBuilder().setCredentials(sourceCredentials).build().getService();
+      Bucket bucket =
+          storage.get(
+              bucketName,
+              Storage.BucketGetOption.fields(Storage.BucketField.HIERARCHICAL_NAMESPACE));
+      if (bucket == null) {
+        LOGGER.warn("GCS bucket '{}' not found during HNS detection, assuming non-HNS", bucketName);
+        return false;
+      }
+      boolean hns =
+          Optional.ofNullable(bucket.getHierarchicalNamespace())
+              .map(BucketInfo.HierarchicalNamespace::getEnabled)
+              .orElse(false);
+      LOGGER.info("Auto-detected HNS status for bucket '{}': {}", bucketName, hns);
+      return hns;
+    } catch (Exception e) {
+      LOGGER.warn("Failed to auto-detect HNS for bucket '{}', assuming non-HNS: {}",
+          bucketName, e.getMessage());
+      return false;
+    }
   }
 
   /**
@@ -248,6 +289,10 @@ public class GcpCredentialsStorageIntegration
                 if (isHierarchicalNamespace) {
                   List<String> folderExpressions =
                       managedFolderConditionsMap.computeIfAbsent(bucket, key -> new ArrayList<>());
+                  folderExpressions.add(
+                      String.format(
+                          "resource.name.startsWith('projects/_/buckets/%s/folders/%s')",
+                          bucket, path));
                   folderExpressions.add(
                       String.format(
                           "resource.name.startsWith('projects/_/buckets/%s/managedFolders/%s')",
