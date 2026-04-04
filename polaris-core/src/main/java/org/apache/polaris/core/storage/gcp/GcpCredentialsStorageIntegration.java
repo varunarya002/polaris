@@ -165,16 +165,11 @@ public class GcpCredentialsStorageIntegration
     if (bucketNames.isEmpty()) {
       return Set.of();
     }
-    try (Storage storage =
-        StorageOptions.newBuilder().setCredentials(sourceCredentials).build().getService()) {
-      return bucketNames.stream()
-          .filter(name -> queryBucketHnsStatus(storage, name))
-          .collect(Collectors.toSet());
-    } catch (Exception e) {
-      LOGGER.warn("Failed to create GCS client for HNS detection, assuming non-HNS: {}",
-          e.getMessage());
-      return Set.of();
-    }
+    Storage storage =
+        StorageOptions.newBuilder().setCredentials(sourceCredentials).build().getService();
+    return bucketNames.stream()
+        .filter(name -> queryBucketHnsStatus(storage, name))
+        .collect(Collectors.toSet());
   }
 
   private boolean queryBucketHnsStatus(Storage storage, String bucketName) {
